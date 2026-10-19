@@ -1,6 +1,25 @@
+//! The macros. Every one is exported at the crate root (`uuid_macros::typed_uuid!`).
+
+/// Declares `pub struct $name(pub Uuid)` with `Display`, `FromStr` and `From` both ways.
+///
+/// Derives `Debug, Clone, Copy, PartialEq, Eq, Hash`. `Display` writes the hyphenated UUID; `FromStr` parses
+/// any form [`uuid::Uuid::parse_str`] accepts.
+///
+/// ```
+/// use uuid_macros::{create_uuid_id, uuid::Uuid};
+///
+/// create_uuid_id!(PlanetId);
+///
+/// let raw = Uuid::new_v4();
+/// let id = PlanetId::from(raw);
+/// let text = id.to_string();
+/// assert_eq!(text.parse::<PlanetId>().unwrap(), id);
+/// assert_eq!(Uuid::from(id), raw);
+/// ```
 #[macro_export]
 macro_rules! create_uuid_id {
     ($name:ident) => {
+        #[doc = concat!("`", stringify!($name), "`: a UUID newtype declared by `uuid_macros::create_uuid_id!`.")]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub struct $name(pub $crate::uuid::Uuid);
 
@@ -16,25 +35,57 @@ macro_rules! create_uuid_id {
             }
         }
 
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 write!(f, "{}", self.0)
+            }
+        }
+
+        impl ::std::str::FromStr for $name {
+            type Err = $crate::uuid::Error;
+            fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
+                $crate::uuid::Uuid::parse_str(s).map(Self)
             }
         }
     };
 }
 
-
-
+/// Declares `pub struct $name(pub Uuid)` with its derives and nothing else.
+///
+/// Derives `Debug, Clone, Copy, PartialEq, Eq, Hash`. Build values with [`new_id!`](crate::new_id!), [`named_id!`](crate::named_id!),
+/// [`new_id_v5!`](crate::new_id_v5!) or [`id_from_str!`](crate::id_from_str!).
+///
+/// ```
+/// use uuid_macros::{create_uuid_id_simple, named_id};
+///
+/// create_uuid_id_simple!(ShelfId);
+///
+/// let a = named_id!(ShelfId, "top");
+/// assert_eq!(a, named_id!(ShelfId, "top"));
+/// assert_eq!(a.0.get_version_num(), 5);
+/// ```
 #[macro_export]
 macro_rules! create_uuid_id_simple {
     ($name:ident) => {
+        #[doc = concat!("`", stringify!($name), "`: a UUID newtype declared by `uuid_macros::create_uuid_id_simple!`.")]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub struct $name(pub $crate::uuid::Uuid);
     };
 }
 
-
+/// Builds `$t(Uuid::new_v5(&NAMESPACE_OID, label))`: the same label always gives the same id.
+///
+/// `$t` is any tuple struct whose one field is a `Uuid`; `$label` is anything with `.as_bytes()`.
+///
+/// ```
+/// use uuid_macros::{named_id, uuid::Uuid};
+///
+/// struct RegionId(Uuid);
+///
+/// let a = named_id!(RegionId, "alpha");
+/// assert_eq!(a.0, named_id!(RegionId, "alpha").0);
+/// assert_eq!(a.0, Uuid::new_v5(&Uuid::NAMESPACE_OID, b"alpha"));
+/// ```
 #[macro_export]
 macro_rules! named_id {
     ($t:ident, $label:expr) => {
@@ -42,6 +93,17 @@ macro_rules! named_id {
     };
 }
 
+/// Builds `$t(Uuid::new_v4())`: a random id.
+///
+/// ```
+/// use uuid_macros::{new_id, uuid::Uuid};
+///
+/// struct ZoneId(Uuid);
+///
+/// let a = new_id!(ZoneId);
+/// assert_ne!(a.0, new_id!(ZoneId).0);
+/// assert_eq!(a.0.get_version_num(), 4);
+/// ```
 #[macro_export]
 macro_rules! new_id {
     ($t:ident) => {
@@ -49,6 +111,22 @@ macro_rules! new_id {
     };
 }
 
+/// Builds a two-level name-based id: `v5(v5(NAMESPACE_OID, namespace), name)`.
+///
+/// The same namespace and name always give the same id; the same name in another namespace gives another.
+///
+/// ```
+/// use uuid_macros::{new_id_v5, uuid::Uuid};
+///
+/// struct NodeId(Uuid);
+///
+/// let a = new_id_v5!(NodeId, "us-west", "node-1");
+/// assert_eq!(a.0, new_id_v5!(NodeId, "us-west", "node-1").0);
+/// assert_ne!(a.0, new_id_v5!(NodeId, "us-east", "node-1").0);
+///
+/// let ns = Uuid::new_v5(&Uuid::NAMESPACE_OID, b"us-west");
+/// assert_eq!(a.0, Uuid::new_v5(&ns, b"node-1"));
+/// ```
 #[macro_export]
 macro_rules! new_id_v5 {
     ($t:ident, $namespace:expr, $name:expr) => {{
@@ -57,8 +135,25 @@ macro_rules! new_id_v5 {
     }};
 }
 
-
-
+/// Builds `$t(Uuid::parse_str(s))`, panicking with `invalid UUID string` when `s` is not a UUID.
+///
+/// For text that may be bad, parse with [`uuid::Uuid::parse_str`] (or `FromStr` on the types
+/// [`typed_uuid!`](crate::typed_uuid!), [`typed_uuid_2!`](crate::typed_uuid_2!) and [`create_uuid_id!`](crate::create_uuid_id!) declare) and handle the error.
+///
+/// ```
+/// use uuid_macros::{id_from_str, uuid::Uuid};
+///
+/// struct RegionId(Uuid);
+///
+/// let id = id_from_str!(RegionId, "123e4567-e89b-12d3-a456-426614174000");
+/// assert_eq!(id.0.to_string(), "123e4567-e89b-12d3-a456-426614174000");
+/// ```
+///
+/// ```should_panic
+/// # use uuid_macros::{id_from_str, uuid::Uuid};
+/// # struct RegionId(Uuid);
+/// let _ = id_from_str!(RegionId, "not-a-uuid"); // panics: invalid UUID string
+/// ```
 #[macro_export]
 macro_rules! id_from_str {
     ($t:ident, $s:expr) => {
@@ -66,18 +161,54 @@ macro_rules! id_from_str {
     };
 }
 
-
-
-
-
-
+/// Declares the full id type for one kind of id.
+///
+/// `typed_uuid!(RegionId, "region")` declares `pub struct RegionId(pub Uuid)` with:
+///
+/// - derives `Debug, Clone, Copy, PartialEq, Eq, Hash`;
+/// - `RegionId::KIND`, the label (`"region"`);
+/// - `new_v4()` (random), `named(label)` (v5 of the label in `NAMESPACE_OID`), `named_v5(namespace, name)`
+///   (the two-level id [`new_id_v5!`](crate::new_id_v5!) builds) and `from_str(s)`, which panics on a bad string;
+/// - `Display` (hyphenated), `FromStr` (`s.parse::<RegionId>()`, returning the error instead of panicking),
+///   `Deref<Target = Uuid>`, and `From` both ways;
+/// - with this crate's `serde` feature, `Serialize` and `Deserialize`, written the way
+///   `#[derive(Serialize, Deserialize)]` writes a newtype struct around the UUID.
+///
+/// `RegionId::from_str(s)` calls the inherent, panicking parse (it is kept as it was); `s.parse()` uses
+/// `FromStr`.
+///
+/// ```
+/// use uuid_macros::{typed_uuid, uuid::Uuid};
+///
+/// typed_uuid!(RegionId, "region");
+///
+/// let id = RegionId::from_str("123e4567-e89b-12d3-a456-426614174000");
+/// assert_eq!(RegionId::KIND, "region");
+/// assert_eq!(id.to_string(), "123e4567-e89b-12d3-a456-426614174000");
+/// assert_eq!(id.to_string().parse::<RegionId>().unwrap(), id);
+/// assert_eq!(RegionId::named("alpha"), RegionId::named("alpha"));
+/// assert_eq!(id.get_version_num(), 1); // through Deref to the Uuid
+/// let raw: Uuid = id.into();
+/// assert_eq!(RegionId::from(raw), id);
+/// ```
+///
+/// Two kinds of id are two types; one is not accepted where the other is expected:
+///
+/// ```compile_fail,E0308
+/// uuid_macros::typed_uuid!(RegionId, "region");
+/// uuid_macros::typed_uuid!(ZoneId, "zone");
+///
+/// fn takes_region(_: RegionId) {}
+/// takes_region(ZoneId::new_v4());
+/// ```
 #[macro_export]
 macro_rules! typed_uuid {
     ($name:ident, $kind:literal) => {
+        #[doc = concat!("A `", $kind, "` id: a UUID newtype declared by `uuid_macros::typed_uuid!`.")]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub struct $name(pub $crate::uuid::Uuid);
 
+        #[allow(clippy::should_implement_trait)]
         impl $name {
             /// Returns the kind label used in macro.
             pub const KIND: &'static str = $kind;
@@ -99,18 +230,27 @@ macro_rules! typed_uuid {
             }
 
             /// Parse from a string
+            ///
+            /// Panics with `Invalid UUID string` when `s` is not a UUID; `s.parse()` returns the error instead.
             pub fn from_str(s: &str) -> Self {
                 Self($crate::uuid::Uuid::parse_str(s).expect("Invalid UUID string"))
             }
         }
 
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 write!(f, "{}", self.0)
             }
         }
 
-        impl std::ops::Deref for $name {
+        impl ::std::str::FromStr for $name {
+            type Err = $crate::uuid::Error;
+            fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
+                $crate::uuid::Uuid::parse_str(s).map(Self)
+            }
+        }
+
+        impl ::std::ops::Deref for $name {
             type Target = $crate::uuid::Uuid;
             fn deref(&self) -> &Self::Target {
                 &self.0
@@ -128,16 +268,36 @@ macro_rules! typed_uuid {
                 value.0
             }
         }
+
+        $crate::__newtype_serde!($name, $crate::uuid::Uuid);
     };
 }
 
+/// Declares an ordered id type with `new` and `nil`.
+///
+/// `typed_uuid_2!(OrderId, "order")` declares `pub struct OrderId(pub Uuid)` with derives
+/// `Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash`, `OrderId::KIND`, `new()` (random v4),
+/// `nil()`, `Display`, `FromStr`, `Deref<Target = Uuid>` and `From` both ways. It has no serde impls.
+///
+/// ```
+/// use uuid_macros::typed_uuid_2;
+///
+/// typed_uuid_2!(OrderId, "order");
+///
+/// let id = OrderId::new();
+/// assert_eq!(OrderId::KIND, "order");
+/// assert!(OrderId::nil() < id);
+/// assert!(OrderId::nil().is_nil());
+/// assert_eq!(id.to_string().parse::<OrderId>().unwrap(), id);
+/// ```
 #[macro_export]
 macro_rules! typed_uuid_2 {
     ($name:ident, $kind:literal) => {
+        #[doc = concat!("A `", $kind, "` id: a UUID newtype declared by `uuid_macros::typed_uuid_2!`.")]
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name(pub $crate::uuid::Uuid);
 
-        impl std::ops::Deref for $name {
+        impl ::std::ops::Deref for $name {
             type Target = $crate::uuid::Uuid;
             fn deref(&self) -> &Self::Target {
                 &self.0
@@ -156,19 +316,30 @@ macro_rules! typed_uuid_2 {
             }
         }
 
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 write!(f, "{}", self.0)
             }
         }
 
+        impl ::std::str::FromStr for $name {
+            type Err = $crate::uuid::Error;
+            fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
+                $crate::uuid::Uuid::parse_str(s).map(Self)
+            }
+        }
+
+        #[allow(clippy::new_without_default)]
         impl $name {
+            /// The kind label given to the macro.
             pub const KIND: &'static str = $kind;
 
+            /// A random (v4) id.
             pub fn new() -> Self {
                 Self($crate::uuid::Uuid::new_v4())
             }
 
+            /// The all-zero id.
             pub fn nil() -> Self {
                 Self($crate::uuid::Uuid::nil())
             }
@@ -176,10 +347,67 @@ macro_rules! typed_uuid_2 {
     };
 }
 
+/// `Serialize`/`Deserialize` for `struct $name(pub $inner)`, as `#[derive]` writes them for a newtype struct
+/// (`serialize_newtype_struct` / `deserialize_newtype_struct`). Decided by this crate's `serde` feature, not the
+/// calling crate's.
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __newtype_serde {
+    ($name:ident, $inner:ty) => {
+        impl $crate::serde::Serialize for $name {
+            fn serialize<S: $crate::serde::Serializer>(
+                &self,
+                serializer: S,
+            ) -> ::std::result::Result<S::Ok, S::Error> {
+                serializer.serialize_newtype_struct(stringify!($name), &self.0)
+            }
+        }
 
+        impl<'de> $crate::serde::Deserialize<'de> for $name {
+            fn deserialize<D: $crate::serde::Deserializer<'de>>(
+                deserializer: D,
+            ) -> ::std::result::Result<Self, D::Error> {
+                struct Visitor;
+                impl<'de> $crate::serde::de::Visitor<'de> for Visitor {
+                    type Value = $name;
+                    fn expecting(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                        f.write_str(concat!("tuple struct ", stringify!($name)))
+                    }
+                    fn visit_newtype_struct<E: $crate::serde::Deserializer<'de>>(
+                        self,
+                        inner: E,
+                    ) -> ::std::result::Result<$name, E::Error> {
+                        <$inner as $crate::serde::Deserialize>::deserialize(inner).map($name)
+                    }
+                    fn visit_seq<A: $crate::serde::de::SeqAccess<'de>>(
+                        self,
+                        mut seq: A,
+                    ) -> ::std::result::Result<$name, A::Error> {
+                        match seq.next_element::<$inner>()? {
+                            Some(inner) => Ok($name(inner)),
+                            None => Err($crate::serde::de::Error::invalid_length(0, &self)),
+                        }
+                    }
+                }
+                deserializer.deserialize_newtype_struct(stringify!($name), Visitor)
+            }
+        }
+    };
+}
+
+#[cfg(not(feature = "serde"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __newtype_serde {
+    ($name:ident, $inner:ty) => {};
+}
+
+#[cfg(test)]
 typed_uuid!(RegionId, "region");
 
 #[test]
+#[allow(unused_variables)]
 fn test_typed_uuid_macros() {
     let id1 = RegionId::new_v4();
     let id2 = RegionId::named("alpha");

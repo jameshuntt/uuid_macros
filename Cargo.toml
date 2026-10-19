@@ -1,12 +1,30 @@
 [package]
 name = "uuid_macros"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.85"
+
+license = "MIT OR Apache-2.0"
+description = "Macros for strongly typed UUID ids: a newtype per kind of id, random (v4) and name-based (v5) constructors, Display, FromStr and optional serde"
+keywords = ["uuid", "id", "newtype", "macro", "typed"]
+categories = ["rust-patterns", "data-structures"]
+
+authors = ["James Hunt <james@1o.business>"]
+repository = "https://github.com/jameshuntt/uuid_macros"
+readme = "README.md"
+
+include = ["src/**", "Cargo.toml", "LICENSE*", "README*", "CHANGELOG*"]
 
 [features]
 default = []
-serde = ["dep:serde"]
+# Serialize and Deserialize for the types `typed_uuid!` declares (the UUID's own serde form).
+serde = ["dep:serde", "uuid/serde"]
 
 [dependencies]
-uuid = { workspace = true }
-serde = { workspace = true, optional = true }
+# v4: `new_id!`, `typed_uuid!`'s `new_v4`, `typed_uuid_2!`'s `new`; v5: `named_id!`, `new_id_v5!`, `named`, `named_v5`
+uuid = { version = "1.16.0", features = ["v4", "v5"] }
+serde = { version = "1.0.219", optional = true }
+
+[dev-dependencies]
+serde_json = "1"
+trybuild = "1"

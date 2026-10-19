@@ -1,0 +1,21 @@
+error[E0308]: mismatched types
+ --> tests/ui/kinds_do_not_unify.rs:7:18
+  |
+7 |     takes_region(ZoneId::new_v4());
+  |     ------------ ^^^^^^^^^^^^^^^^ expected `RegionId`, found `ZoneId`
+  |     |
+  |     arguments to this function are incorrect
+  |
+note: function defined here
+ --> tests/ui/kinds_do_not_unify.rs:4:4
+  |
+4 | fn takes_region(_: RegionId) {}
+  |    ^^^^^^^^^^^^ -----------
+
+error[E0308]: mismatched types
+ --> tests/ui/kinds_do_not_unify.rs:8:23
+  |
+8 |     let _: RegionId = ZoneId::named("x");
+  |            --------   ^^^^^^^^^^^^^^^^^^ expected `RegionId`, found `ZoneId`
+  |            |
+  |            expected due to this
